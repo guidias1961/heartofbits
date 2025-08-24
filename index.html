@@ -83,9 +83,10 @@
     strobeVR: 950,
     strobeFade: 0.86,
 
-    // TEXTO (MENOR E LEGÍVEL)
-    textSizeFactor: 0.18,     // ← menor que antes (antes: 0.24)
-    textLineHeight: 1.12,     // linha mais compacta
+    // TEXTO
+    textSizeFactor: 0.18,          // desktop
+    textSizeFactorMobile: 0.12,    // ← menor no mobile
+    textLineHeight: 1.12,
     textDisplaceStrength: 0.24
   };
 
@@ -173,7 +174,7 @@
     // Coração mais denso
     addHeartNodes(heartTarget, heartC, heartScale);
 
-    // Texto em duas linhas com fonte tech (AGORA MENOR)
+    // Texto em duas linhas (fonte menor em telas estreitas)
     addTextWithMesh(MESSAGE_FULL, textTarget, textBox);
 
     // Ligações
@@ -205,7 +206,8 @@
     const octx = off.getContext('2d');
 
     // tamanho menor e quebra em 2 linhas
-    let size = Math.floor(off.height * params.textSizeFactor);
+    const isMobile = (W/DPR < 700);
+    let size = Math.floor(off.height * (isMobile ? params.textSizeFactorMobile : params.textSizeFactor));
     const lineH = params.textLineHeight;
     octx.textBaseline = 'middle';
     octx.textAlign = 'center';
@@ -237,7 +239,7 @@
     const worldY1 = box.cy + (y1 - off.height*0.5) * scaleInv;
     const worldY2 = box.cy + (y2 - off.height*0.5) * scaleInv;
 
-    // posições por caractere (para deslocamento suave)
+    // posições por caractere
     const measureCtx = document.createElement('canvas').getContext('2d');
     measureCtx.font = `700 ${fontPxWorld}px ${FONT_UI}`;
     function charsForLine(str, yWorld){
@@ -427,7 +429,7 @@
       ctx.fillText(nd.bit, x, y);
     }
 
-    // Texto nítido (agora MENOR)
+    // Texto nítido
     if(textLayout){
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
