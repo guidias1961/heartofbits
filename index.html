@@ -83,12 +83,14 @@
     strobeVR: 950,
     strobeFade: 0.86,
 
-    // TEXTO (tamanho e suavidade)
-    textSizeFactor: 0.18,          // desktop
-    textSizeFactorMobile: 0.12,    // menor no mobile
-    textLineHeight: 1.12,
-    textDisplaceStrengthDesktop: 0.08, // interatividade mais suave (apenas na frase)
-    textDisplaceStrengthMobile: 0.06
+    // TEXTO (somente a frase)
+    textSizeFactor: 0.16,            // desktop
+    textSizeFactorMobile: 0.08,      // menor no mobile
+    textMaxPxDesktop: 34,            // teto de tamanho
+    textMaxPxMobile: 22,             // teto de tamanho (garante legibilidade)
+    textLineHeight: 1.30,            // mais espaço entre linhas
+    textDisplaceStrengthDesktop: 0.06, // interação suave
+    textDisplaceStrengthMobile: 0.05
   };
 
   function resize(){
@@ -162,7 +164,7 @@
       heartC.x = center.x;
       heartC.y = H*0.38;
       textBox.cx = center.x;
-      textBox.cy = H*0.78;
+      textBox.cy = H*0.78;   // frase bem abaixo do coração
       textBox.w  = W*0.90;
       textBox.h  = H*0.34;
     }
@@ -172,13 +174,8 @@
     const heartTarget = Math.floor(totalTarget * params.heartRatio);
     const textTarget  = totalTarget - heartTarget;
 
-    // Coração mais denso
     addHeartNodes(heartTarget, heartC, heartScale);
-
-    // Texto em duas linhas (fonte normal + deslocamento mais suave)
     addTextWithMesh(MESSAGE_FULL, textTarget, textBox);
-
-    // Ligações
     buildEdgesForGroup(GROUP_HEART, params.linkRadiusHeart, params.linksPerHeart, edgesHeart);
     buildEdgesForGroup(GROUP_TEXT,  params.linkRadiusText,  params.linksPerText,  edgesText);
   }
@@ -199,7 +196,6 @@
   }
 
   function addTextWithMesh(text, count, box){
-    // offscreen para medir e amostrar
     const off = document.createElement('canvas');
     const isMobile = (W/DPR < 700);
     const scaleDown = isMobile ? 0.9 : 1.0;
@@ -207,22 +203,28 @@
     off.height = Math.max(120, Math.floor(box.h * scaleDown));
     const octx = off.getContext('2d');
 
-    // tamanho e quebra em 2 linhas
+    // tamanho base + teto rígido
     let size = Math.floor(off.height * (isMobile ? params.textSizeFactorMobile : params.textSizeFactor));
+    const hardCap = isMobile ? params.textMaxPxMobile : params.textMaxPxDesktop;
+    size = Math.min(size, hardCap);
+
     const lineH = params.textLineHeight;
     octx.textBaseline = 'middle';
     octx.textAlign = 'center';
+
+    const targetW = off.width * 0.85;     // margens extras
+    const targetH = off.height * 0.70;    // bloco não ocupa tudo
 
     function measureLine(s){ octx.font = `600 ${size}px ${FONT_UI}`; return octx.measureText(s).width; }
 
     let lines;
     do{
       octx.font = `600 ${size}px ${FONT_UI}`;
-      lines = splitIntoTwoLines(text, s => octx.measureText(s).width, off.width*0.92);
+      lines = splitIntoTwoLines(text, s => octx.measureText(s).width, targetW);
       const blockHeight = size*lineH*2;
-      if(blockHeight <= off.height*0.92 && measureLine(lines[0]) <= off.width*0.92 && measureLine(lines[1]) <= off.width*0.92) break;
+      if(blockHeight <= targetH && measureLine(lines[0]) <= targetW && measureLine(lines[1]) <= targetW) break;
       size -= 2;
-      if(size < 12) break; // limite mínimo
+      if(size < 10) break;
     }while(true);
 
     // render no offscreen
@@ -240,7 +242,6 @@
     const worldY1 = box.cy + (y1 - off.height*0.5) * scaleInv;
     const worldY2 = box.cy + (y2 - off.height*0.5) * scaleInv;
 
-    // posições por caractere
     const measureCtx = document.createElement('canvas').getContext('2d');
     measureCtx.font = `600 ${fontPxWorld}px ${FONT_UI}`;
     function charsForLine(str, yWorld){
@@ -266,7 +267,7 @@
     };
 
     // malha de pontos invisíveis para as linhas do texto
-    const img = octx.getImageData(0,0,off.width,off.height).data;
+    const odata = octx.getImageData(0,0,off.width,off.height).data;
     const pixels = off.width * off.height;
     let step = Math.max(3, Math.floor(Math.sqrt(pixels / Math.max(1, count))));
     let placed = 0;
@@ -276,7 +277,7 @@
       for(let y=passStep*0.5; y<off.height; y+=passStep){
         for(let x=passStep*0.5; x<off.width; x+=passStep){
           const xi = Math.floor(x), yi = Math.floor(y);
-          const a = img[(yi*off.width + xi)*4 + 3];
+          const a = odata[(yi*off.width + xi)*4 + 3];
           if(a > threshold){
             const jitter = passStep*0.35;
             const wx = box.cx + (x - off.width*0.5)*scaleInv + (Math.random()*2-1)*jitter;
@@ -367,7 +368,6 @@
         let bx = center.x + (bj.x0 - center.x)*breathe;
         let by = center.y + (bj.y0 - center.y)*breathe;
 
-        // curvatura por ponteiro
         let useCurve = false, cx=0, cy=0, s=0;
         if(pointer.active){
           const mx = pointer.x, my = pointer.y;
@@ -431,7 +431,7 @@
       ctx.fillText(nd.bit, x, y);
     }
 
-    // Texto nítido e com deslocamento suave
+    // Texto nítido e suave
     if(textLayout){
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
