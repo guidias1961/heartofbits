@@ -28,14 +28,12 @@
   // Nós e arestas
   let nodes = [];                 // {x0,y0,bit,group}
   let edgesHeart = [];            // {i,j}
-  let edgesText  = [];            // {i,j}
   const GROUP_HEART = 1;
-  const GROUP_TEXT  = 2;
 
-  // Layout do texto (duas linhas)
-  let textLayout = null;          // {lines:[{text, chars:[{ch,x,y,w}] }], fontPxWorld, dispStrength}
+  // BLOCO DE TEXTO ESTÁTICO (sem interação)
+  let textBlock = null;           // {lines:[l1,l2], fontPx, y1,y2, x}
 
-  // Ponteiro unificado
+  // Ponteiro (continua para o coração)
   const pointer = { x:0, y:0, active:false, radius:0, pull:1.18 };
   const clickTimes = [];
   const strobes = [];
@@ -43,7 +41,7 @@
 
   const MESSAGE_FULL = "Fernandinha, sua pele está linda!";
 
-  // Stacks de fonte
+  // Fontes
   const FONT_UI = "Inter, system-ui, 'Segoe UI', Arial, sans-serif";
   const FONT_MONO = "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
 
@@ -53,11 +51,9 @@
     targetCountNarrow: 1400,
     heartRatio: 0.72,
 
-    // ligações
+    // ligações (coração)
     linkRadiusHeart: 62,
     linksPerHeart: 4,
-    linkRadiusText: 34,
-    linksPerText: 2,
 
     preScale: 0.42,
     bitFontPxDesktop: 14,
@@ -68,8 +64,6 @@
     colorBits: "rgba(255,255,255,0.95)",
     colorHeartA: "rgba(0,229,255,0.22)",
     colorHeartB: "rgba(122,60,255,0.30)",
-    colorTextA:  "rgba(0,229,255,0.12)",
-    colorTextB:  "rgba(122,60,255,0.16)",
 
     // respiração
     breatheAmp: 0.010,
@@ -83,14 +77,12 @@
     strobeVR: 950,
     strobeFade: 0.86,
 
-    // TEXTO (somente a frase)
-    textSizeFactor: 0.16,            // desktop
-    textSizeFactorMobile: 0.08,      // menor no mobile
-    textMaxPxDesktop: 34,            // teto de tamanho
-    textMaxPxMobile: 22,             // teto de tamanho (garante legibilidade)
-    textLineHeight: 1.30,            // mais espaço entre linhas
-    textDisplaceStrengthDesktop: 0.06, // interação suave
-    textDisplaceStrengthMobile: 0.05
+    // TEXTO ESTÁTICO
+    textSizeFactor: 0.16,          // desktop
+    textSizeFactorMobile: 0.085,    // mobile menor
+    textMaxPxDesktop: 34,           // teto
+    textMaxPxMobile: 22,            // teto mobile
+    textLineHeight: 1.30            // mais espaço
   };
 
   function resize(){
@@ -143,15 +135,16 @@
   }
 
   function regenerate(){
-    nodes = []; edgesHeart = []; edgesText = []; textLayout = null;
+    nodes = []; edgesHeart = []; textBlock = null;
 
     const cssW = W / DPR;
     const wide = cssW >= 900;
 
-    // Layout responsivo
+    // Layout do coração (inalterado)
     let heartC = { x: center.x, y: center.y };
     let heartScale = baseScale * (wide ? 1.08 : 1.02);
 
+    // Caixa do texto
     let textBox = { cx:center.x, cy:center.y, w: W*0.8, h: H*0.34 };
     if(wide){
       heartC.x = W*0.33;
@@ -164,7 +157,7 @@
       heartC.x = center.x;
       heartC.y = H*0.38;
       textBox.cx = center.x;
-      textBox.cy = H*0.78;   // frase bem abaixo do coração
+      textBox.cy = H*0.78;
       textBox.w  = W*0.90;
       textBox.h  = H*0.34;
     }
@@ -172,12 +165,13 @@
     // Densidade
     const totalTarget = Math.floor(wide ? params.targetCountWide : params.targetCountNarrow);
     const heartTarget = Math.floor(totalTarget * params.heartRatio);
-    const textTarget  = totalTarget - heartTarget;
 
+    // Coração (inalterado)
     addHeartNodes(heartTarget, heartC, heartScale);
-    addTextWithMesh(MESSAGE_FULL, textTarget, textBox);
-    buildEdgesForGroup(GROUP_HEART, params.linkRadiusHeart, params.linksPerHeart, edgesHeart);
-    buildEdgesForGroup(GROUP_TEXT,  params.linkRadiusText,  params.linksPerText,  edgesText);
+    buildEdgesForHeart();
+
+    // Texto estático: calcula tamanho e posições; NÃO cria nós/arestas
+    buildStaticText(MESSAGE_FULL, textBox);
   }
 
   function addHeartNodes(count, anchor, scale){
@@ -195,114 +189,10 @@
     }
   }
 
-  function addTextWithMesh(text, count, box){
-    const off = document.createElement('canvas');
-    const isMobile = (W/DPR < 700);
-    const scaleDown = isMobile ? 0.9 : 1.0;
-    off.width  = Math.max(160, Math.floor(box.w * scaleDown));
-    off.height = Math.max(120, Math.floor(box.h * scaleDown));
-    const octx = off.getContext('2d');
-
-    // tamanho base + teto rígido
-    let size = Math.floor(off.height * (isMobile ? params.textSizeFactorMobile : params.textSizeFactor));
-    const hardCap = isMobile ? params.textMaxPxMobile : params.textMaxPxDesktop;
-    size = Math.min(size, hardCap);
-
-    const lineH = params.textLineHeight;
-    octx.textBaseline = 'middle';
-    octx.textAlign = 'center';
-
-    const targetW = off.width * 0.85;     // margens extras
-    const targetH = off.height * 0.70;    // bloco não ocupa tudo
-
-    function measureLine(s){ octx.font = `600 ${size}px ${FONT_UI}`; return octx.measureText(s).width; }
-
-    let lines;
-    do{
-      octx.font = `600 ${size}px ${FONT_UI}`;
-      lines = splitIntoTwoLines(text, s => octx.measureText(s).width, targetW);
-      const blockHeight = size*lineH*2;
-      if(blockHeight <= targetH && measureLine(lines[0]) <= targetW && measureLine(lines[1]) <= targetW) break;
-      size -= 2;
-      if(size < 10) break;
-    }while(true);
-
-    // render no offscreen
-    octx.clearRect(0,0,off.width,off.height);
-    octx.fillStyle = '#fff';
-    const cy = off.height*0.5;
-    const y1 = cy - size*lineH*0.5;
-    const y2 = cy + size*lineH*0.5;
-    octx.fillText(lines[0], off.width*0.5, y1);
-    octx.fillText(lines[1], off.width*0.5, y2);
-
-    // layout para canvas principal
-    const scaleInv = 1/scaleDown;
-    const fontPxWorld = size * scaleInv;
-    const worldY1 = box.cy + (y1 - off.height*0.5) * scaleInv;
-    const worldY2 = box.cy + (y2 - off.height*0.5) * scaleInv;
-
-    const measureCtx = document.createElement('canvas').getContext('2d');
-    measureCtx.font = `600 ${fontPxWorld}px ${FONT_UI}`;
-    function charsForLine(str, yWorld){
-      const w = measureCtx.measureText(str).width;
-      const startX = box.cx - w*0.5;
-      const arr = [];
-      let acc = 0;
-      for(const ch of str){
-        const cw = measureCtx.measureText(ch).width;
-        const cx = startX + acc + cw*0.5;
-        arr.push({ ch, x: cx, y: yWorld, w: cw });
-        acc += cw;
-      }
-      return arr;
-    }
-    textLayout = {
-      fontPxWorld,
-      dispStrength: isMobile ? params.textDisplaceStrengthMobile : params.textDisplaceStrengthDesktop,
-      lines: [
-        { text: lines[0], chars: charsForLine(lines[0], worldY1) },
-        { text: lines[1], chars: charsForLine(lines[1], worldY2) }
-      ]
-    };
-
-    // malha de pontos invisíveis para as linhas do texto
-    const odata = octx.getImageData(0,0,off.width,off.height).data;
-    const pixels = off.width * off.height;
-    let step = Math.max(3, Math.floor(Math.sqrt(pixels / Math.max(1, count))));
-    let placed = 0;
-    const threshold = 32;
-
-    function tryGrid(passStep){
-      for(let y=passStep*0.5; y<off.height; y+=passStep){
-        for(let x=passStep*0.5; x<off.width; x+=passStep){
-          const xi = Math.floor(x), yi = Math.floor(y);
-          const a = odata[(yi*off.width + xi)*4 + 3];
-          if(a > threshold){
-            const jitter = passStep*0.35;
-            const wx = box.cx + (x - off.width*0.5)*scaleInv + (Math.random()*2-1)*jitter;
-            const wy = box.cy + (y - off.height*0.5)*scaleInv + (Math.random()*2-1)*jitter;
-            nodes.push({ x0:wx, y0:wy, bit:null, group:GROUP_TEXT });
-            placed++;
-            if(placed >= count) return true;
-          }
-        }
-      }
-      return false;
-    }
-    if(!tryGrid(step)){
-      step = Math.max(2, Math.floor(step*0.8));
-      if(!tryGrid(step)){
-        step = Math.max(2, Math.floor(step*0.8));
-        tryGrid(step);
-      }
-    }
-  }
-
-  function buildEdgesForGroup(group, linkRadiusCss, maxLinks, outEdges){
+  function buildEdgesForHeart(){
     const idx = [];
-    for(let i=0;i<nodes.length;i++) if(nodes[i].group===group) idx.push(i);
-    const r2 = (linkRadiusCss*DPR)*(linkRadiusCss*DPR);
+    for(let i=0;i<nodes.length;i++) if(nodes[i].group===GROUP_HEART) idx.push(i);
+    const r2 = (params.linkRadiusHeart*DPR)*(params.linkRadiusHeart*DPR);
     for(let a=0;a<idx.length;a++){
       const i = idx[a], ai = nodes[i];
       const nbs = [];
@@ -315,28 +205,65 @@
         if(d2 <= r2) nbs.push({j, d2});
       }
       nbs.sort((p,q)=>p.d2 - q.d2);
-      const take = Math.min(maxLinks, nbs.length);
+      const take = Math.min(params.linksPerHeart, nbs.length);
       for(let k=0;k<take;k++){
         const j = nbs[k].j;
-        if(i < j) outEdges.push({i,j});
+        if(i < j) edgesHeart.push({i,j});
       }
     }
+  }
+
+  // Texto puramente estático
+  function buildStaticText(text, box){
+    const isMobile = (W/DPR < 700);
+    const scaleDown = isMobile ? 0.9 : 1.0;
+
+    // canvas offscreen só para medir
+    const off = document.createElement('canvas');
+    off.width  = Math.max(160, Math.floor(box.w * scaleDown));
+    off.height = Math.max(120, Math.floor(box.h * scaleDown));
+    const octx = off.getContext('2d');
+
+    let size = Math.floor(off.height * (isMobile ? params.textSizeFactorMobile : params.textSizeFactor));
+    size = Math.min(size, isMobile ? params.textMaxPxMobile : params.textMaxPxDesktop);
+
+    const lineH = params.textLineHeight;
+    const targetW = off.width * 0.85;
+    const targetH = off.height * 0.70;
+
+    function fit(linesize){
+      octx.font = `600 ${linesize}px ${FONT_UI}`;
+      const lines = splitIntoTwoLines(text, s => octx.measureText(s).width, targetW);
+      const w1 = octx.measureText(lines[0]).width;
+      const w2 = octx.measureText(lines[1]).width;
+      const blockH = linesize*lineH*2;
+      return {lines, ok: (w1<=targetW && w2<=targetW && blockH<=targetH)};
+    }
+
+    let info = fit(size);
+    while(!info.ok && size>10){
+      size -= 2;
+      info = fit(size);
+    }
+
+    // coordenadas finais no canvas principal
+    const fontPx = size * (1/scaleDown);
+    const cy = box.cy;
+    const y1 = cy - fontPx*lineH*0.5;
+    const y2 = cy + fontPx*lineH*0.5;
+
+    textBlock = {
+      lines: info.lines,
+      fontPx: fontPx,
+      x: box.cx,
+      y1, y2
+    };
   }
 
   function clamp(v,a,b){ return v<a?a: v>b?b: v; }
   function smoothstep(edge0, edge1, x){
     const t = clamp((x - edge0)/(edge1 - edge0), 0, 1);
     return t*t*(3 - 2*t);
-  }
-
-  function pointerDisplacement(x, y, strength){
-    if(!pointer.active) return {dx:0, dy:0};
-    const dx = pointer.x - x, dy = pointer.y - y;
-    const d = Math.hypot(dx, dy);
-    if(d >= pointer.radius) return {dx:0, dy:0};
-    const s = smoothstep(0, 1, 1 - d/pointer.radius);
-    const k = pointer.pull * strength;
-    return { dx: dx*s*k, dy: dy*s*k };
   }
 
   function animate(now){
@@ -356,6 +283,7 @@
     ctx.lineJoin = "round";
     ctx.lineWidth = params.lineWidth * DPR;
 
+    // Linhas do coração (inalterado, interativo)
     function drawEdges(list, color, opacity){
       ctx.strokeStyle = color;
       ctx.beginPath();
@@ -368,6 +296,7 @@
         let bx = center.x + (bj.x0 - center.x)*breathe;
         let by = center.y + (bj.y0 - center.y)*breathe;
 
+        // curvatura por ponteiro (mantido para o coração)
         let useCurve = false, cx=0, cy=0, s=0;
         if(pointer.active){
           const mx = pointer.x, my = pointer.y;
@@ -407,13 +336,10 @@
       ctx.globalAlpha = 1;
     }
 
-    // Camadas de linhas
     drawEdges(edgesHeart, params.colorHeartA, 1.0);
     drawEdges(edgesHeart, params.colorHeartB, 1.0);
-    drawEdges(edgesText,  params.colorTextA,  1.0);
-    drawEdges(edgesText,  params.colorTextB,  1.0);
 
-    // Dígitos do coração
+    // Dígitos do coração (inalterado)
     const bitSizeCss = (W/DPR < 700 ? params.bitFontPxMobile : params.bitFontPxDesktop);
     ctx.font = `${Math.round(bitSizeCss*DPR)}px ${FONT_MONO}`;
     ctx.textAlign = "center";
@@ -431,30 +357,24 @@
       ctx.fillText(nd.bit, x, y);
     }
 
-    // Texto nítido e suave
-    if(textLayout){
+    // FRASE ESTÁTICA (sem interação)
+    if(textBlock){
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.font = `600 ${Math.round(textLayout.fontPxWorld*DPR)}px ${FONT_UI}`;
+      ctx.font = `600 ${Math.round(textBlock.fontPx*DPR)}px ${FONT_UI}`;
 
-      for(const line of textLayout.lines){
-        for(const ch of line.chars){
-          const disp = pointerDisplacement(ch.x, ch.y, textLayout.dispStrength);
-          const tx = ch.x + disp.dx;
-          const ty = ch.y + disp.dy;
+      // leve contorno para contraste
+      ctx.lineWidth = 1 * DPR;
+      ctx.strokeStyle = "rgba(10,11,15,0.70)";
+      ctx.strokeText(textBlock.lines[0], textBlock.x, textBlock.y1);
+      ctx.strokeText(textBlock.lines[1], textBlock.x, textBlock.y2);
 
-          // contorno discreto
-          ctx.lineWidth = 1 * DPR;
-          ctx.strokeStyle = "rgba(10,11,15,0.70)";
-          ctx.strokeText(ch.ch, tx, ty);
-
-          ctx.fillStyle = "#ffffff";
-          ctx.fillText(ch.ch, tx, ty);
-        }
-      }
+      ctx.fillStyle = "#ffffff";
+      ctx.fillText(textBlock.lines[0], textBlock.x, textBlock.y1);
+      ctx.fillText(textBlock.lines[1], textBlock.x, textBlock.y2);
     }
 
-    // Strobes
+    // Strobes (inalterado)
     if(strobes.length){
       ctx.save();
       ctx.globalCompositeOperation = "lighter";
@@ -486,7 +406,7 @@
     requestAnimationFrame(animate);
   }
 
-  // Ponteiro
+  // Ponteiro (mantido para o coração)
   function setPointerFromEvent(ev){
     const rect = canvas.getBoundingClientClientRect ? canvas.getBoundingClientRect() : {left:0, top:0};
     pointer.x = (ev.clientX - rect.left) * DPR;
