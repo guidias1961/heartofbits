@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no" />
-<title>Heart of Bits</title>
+<title>Fernanda Gostosa</title>
 <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Orbitron:wght@500;700&display=swap" rel="stylesheet">
 <style>
   html, body { height: 100%; margin: 0; background:#080a0f; }
@@ -16,7 +16,7 @@
 </head>
 <body>
 <canvas id="c"></canvas>
-<div class="hint">Arraste o dedo ou passe o mouse para puxar. Toque ou clique rápido para strobes. R ou Espaço reinicia.</div>
+<div class="hint">Arraste o dedo ou passe o mouse para puxar. Toque/click rápido para strobes. R ou Espaço reinicia.</div>
 
 <script>
 (function(){
@@ -32,11 +32,11 @@
   const GROUP_HEART = 1;
   const GROUP_TEXT  = 2;
 
-  // Layout do texto em duas linhas
+  // Layout do texto (duas linhas)
   let textLayout = null;          // {lines:[{text, chars:[{ch,x,y,w}] }], fontPxWorld}
 
   // Ponteiro unificado
-  const pointer = { x:0, y:0, active:false, radius:0, pull:1.15 };
+  const pointer = { x:0, y:0, active:false, radius:0, pull:1.18 };
   const clickTimes = [];
   const strobes = [];
   let overlayAlpha = 0;
@@ -49,7 +49,6 @@
 
   // Parâmetros
   const params = {
-    // mais densidade no coração
     targetCountWide: 1900,
     targetCountNarrow: 1400,
     heartRatio: 0.72,
@@ -84,10 +83,10 @@
     strobeVR: 950,
     strobeFade: 0.86,
 
-    // texto
-    textSizeFactor: 0.24,     // menor que antes para reduzir o tamanho
-    textLineHeight: 1.14,     // compacto e legível
-    textDisplaceStrength: 0.26
+    // TEXTO (MENOR E LEGÍVEL)
+    textSizeFactor: 0.18,     // ← menor que antes (antes: 0.24)
+    textLineHeight: 1.12,     // linha mais compacta
+    textDisplaceStrength: 0.24
   };
 
   function resize(){
@@ -174,7 +173,7 @@
     // Coração mais denso
     addHeartNodes(heartTarget, heartC, heartScale);
 
-    // Texto em duas linhas com fonte tech
+    // Texto em duas linhas com fonte tech (AGORA MENOR)
     addTextWithMesh(MESSAGE_FULL, textTarget, textBox);
 
     // Ligações
@@ -205,7 +204,7 @@
     off.height = Math.max(120, Math.floor(box.h * scaleDown));
     const octx = off.getContext('2d');
 
-    // escolher tamanho e quebrar em 2 linhas
+    // tamanho menor e quebra em 2 linhas
     let size = Math.floor(off.height * params.textSizeFactor);
     const lineH = params.textLineHeight;
     octx.textBaseline = 'middle';
@@ -220,7 +219,7 @@
       const blockHeight = size*lineH*2;
       if(blockHeight <= off.height*0.92 && measureLine(lines[0]) <= off.width*0.92 && measureLine(lines[1]) <= off.width*0.92) break;
       size -= 2;
-      if(size < 14) break;
+      if(size < 12) break; // limite mínimo
     }while(true);
 
     // render no offscreen
@@ -238,7 +237,7 @@
     const worldY1 = box.cy + (y1 - off.height*0.5) * scaleInv;
     const worldY2 = box.cy + (y2 - off.height*0.5) * scaleInv;
 
-    // posições por caractere
+    // posições por caractere (para deslocamento suave)
     const measureCtx = document.createElement('canvas').getContext('2d');
     measureCtx.font = `700 ${fontPxWorld}px ${FONT_UI}`;
     function charsForLine(str, yWorld){
@@ -345,7 +344,6 @@
     ctx.setTransform(1,0,0,1,0,0);
     ctx.clearRect(0,0,W,H);
 
-    // offsets acumulados pelos puxões
     const offX = new Float32Array(nodes.length);
     const offY = new Float32Array(nodes.length);
 
@@ -385,7 +383,6 @@
             cy = midy + (my - midy) * s * pointer.pull;
             useCurve = true;
 
-            // endpoints acompanham um pouco
             const dax = (cx - ax) * 0.35 * s;
             const day = (cy - ay) * 0.35 * s;
             const dbx = (cx - bx) * 0.35 * s;
@@ -423,7 +420,6 @@
       const x = center.x + (nd.x0 - center.x)*breathe + offX[i];
       const y = center.y + (nd.y0 - center.y)*breathe + offY[i];
 
-      // halo
       ctx.fillStyle = "rgba(0,229,255,0.06)";
       ctx.beginPath(); ctx.arc(x, y, 7*DPR, 0, Math.PI*2); ctx.fill();
 
@@ -431,7 +427,7 @@
       ctx.fillText(nd.bit, x, y);
     }
 
-    // Texto nítido em duas linhas com fonte tech
+    // Texto nítido (agora MENOR)
     if(textLayout){
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
@@ -443,7 +439,7 @@
           const tx = ch.x + disp.dx;
           const ty = ch.y + disp.dy;
 
-          // contorno discreto para legibilidade
+          // contorno discreto
           ctx.lineWidth = 1 * DPR;
           ctx.strokeStyle = "rgba(10,11,15,0.70)";
           ctx.strokeText(ch.ch, tx, ty);
@@ -488,7 +484,7 @@
 
   // Ponteiro
   function setPointerFromEvent(ev){
-    const rect = canvas.getBoundingClientRect();
+    const rect = canvas.getBoundingClientClientRect ? canvas.getBoundingClientRect() : {left:0, top:0};
     pointer.x = (ev.clientX - rect.left) * DPR;
     pointer.y = (ev.clientY - rect.top) * DPR;
     pointer.active = true;
